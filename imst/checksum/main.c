@@ -7,31 +7,40 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define WIMODLR_HCI_MSG_HEADER_SIZE 2
+#define WIMODLR_HCI_MSG_PAYLOAD_SIZE 280
+#define WIMODLR_HCI_MSG_FCS_SIZE 2
+
+typedef struct {
+  // payload info
+  UINT16 length;
+  UINT8 SapID;
+  UINT8 MsgID;
+  UINT8 Payload[WIMODLR_HCI_MSG_PAYLOAD_SIZE];
+  UINT8 CRC16[WIMODLR_HCI_MSG_FCS_SIZE];
+} TWiMODLR_HCIMessage;
+
+TWiMODLR_HCIMessage TxMessage;
+
 int main() {
-    
-  // replicate ping message calculation  
-  UINT8 datum[2] = { 1, 1 };
-  UINT8 *data = &datum[0];
-  UINT16 length = 4;
-    
-  //use the CRC calc function
-  UINT16 result = CRC16_Calc(data, length, CRC16_INIT_VALUE);
+
+  TxMessage.SapID = 1;
+  TxMessage.MsgID = 1;
+  TxMessage.length = 0;
+
+  // use the CRC calc function
+  // UINT16 result = CRC16_Calc(data, length, CRC16_INIT_VALUE);
+  UINT16 result = CRC16_Calc(&TxMessage.SapID,
+                             TxMessage.length + WIMODLR_HCI_MSG_HEADER_SIZE,
+                             CRC16_INIT_VALUE);
+
+  result = ~result;
   printf("result: %i\n", result);
 
-  UINT8 msb = (result & 0xFF00) >> 8 ;
+  UINT8 msb = (result & 0xFF00) >> 8;
   UINT8 lsb = (result & 0xFF);
 
   printf("msb: %i, lsb: %i \n", msb, lsb);
- 
-  // test ping using correct CRC values
-  UINT8 newmsg[4] = {1, 1, msb, lsb};
-  length = 4;
-  printf("bool: %i\n", CRC16_Check(&newmsg[0], length, CRC16_INIT_VALUE)); 
-    
-  // test response value to ping
-  length = 5;
-  UINT8 testmsg[5] = {1, 2, 0, 160, 175};
-  printf("check val from LR studio: %i\n", CRC16_Check(&testmsg[0], length, CRC16_INIT_VALUE));
 
   return 0;
 }
