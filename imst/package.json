@@ -1,0 +1,21 @@
+{
+  "name": "im880b-serial-comm",
+  "version": "1.0.0",
+  "description": "serial communication with iM880B",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/lab11/LoraDev.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Samuel Rohrer",
+  "license": "ISC",
+  "dependencies": {
+    "convert-hex": "^0.1.0",
+    "crc": "^3.4.0",
+    "serialport": "^4.0.1",
+    "slip": "^1.0.2"
+  }
+}
