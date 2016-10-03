@@ -1,4 +1,4 @@
-# LoraDev
+# LoRa-comms 
 LoRa Development Code
 
 
