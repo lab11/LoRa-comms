@@ -35,7 +35,6 @@ int main() {
                              CRC16_INIT_VALUE);
 
   result = ~result;
-  printf("result: %i\n", result);
 
   UINT8 msb = (result & 0xFF00) >> 8;
   UINT8 lsb = (result & 0xFF);

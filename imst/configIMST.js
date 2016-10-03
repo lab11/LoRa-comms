@@ -36,6 +36,10 @@ const DEVMGMT_STATUS_ERROR = 0x01;             // Operation failed;
 const DEVMGMT_STATUS_CMD_NOT_SUPPORTED = 0x02; // Command is not supported;
 const DEVMGMT_STATUS_WRONG_PARAMETER = 0x03;
 
+const CRC16_INIT_VALUE = 0xFFFF;
+const CRC16_GOOD_VALUE = 0x0F47;
+const CRC16_POLYNOM = 0x8408;
+
 // require slip and serial port
 var slip = require('slip');
 var SerialPort = require('serialport');
@@ -73,5 +77,71 @@ function configIMST(port, decoder, endpointID) {
   ]);
 }
 
+makePacket(1, 1, '');
 // function to make lora packet and send
-function makePacket(endpointID, msgID, message) {}
+function makePacket(endpointID, msgID, message) {
+  // declare the packet
+  const packet = new Uint8Array(message.length + 5);
+  packet[0] = 0xC0;
+  packet[1] = endpointID;
+  packet[2] = msgID;
+
+  for (var i = 0; i < message.length; i++) {
+    packet[3 + i] = message[i];
+  }
+  var result = CRC16_Calc(packet, 1, 2 + message.length, CRC16_INIT_VALUE);
+  result = (~result & 65535);
+  packet[3 + message.length] = result & 0xFF;
+  packet[3 + message.length + 1] = (result >> 8);
+  var check = CRC16_Check(packet, 1, 2 + message.length + 2, CRC16_INIT_VALUE);
+  console.log('Check is ' + check);
+}
+
+// CRC calculation
+function CRC16_Calc(data, start, length, initVal) {
+  // init crc
+  var crc = initVal;
+  // iterate over all bytes
+  for (var i = 0; i < length; i++) {
+    var bits = 8;
+    var byte = data[start + i];
+    // iterate over all bits per byte
+    while (bits--) {
+      if ((byte & 1) ^ (crc & 1)) {
+        crc = (crc >> 1) ^ CRC16_POLYNOM;
+      } else {
+        crc >>= 1;
+      }
+      byte >>= 1;
+    }
+  }
+  return crc;
+}
+
+//------------------------------------------------------------------------------
+
+// CRC16_Check
+//
+//------------------------------------------------------------------------------
+//!
+//! @brief calculate & test CRC16
+//!
+//------------------------------------------------------------------------------
+//!
+//! This function checks a data block with attached CRC16
+//!
+//! <!------------------------------------------------------------------------->
+//! @param[in] data pointer to data block
+//! @param[in] length number of bytes (including CRC16)
+//! @param[in] initVal CRC16 initial value
+//! <!------------------------------------------------------------------------->
+//! @retVal true CRC16 ok -> data block ok
+//! @retVal false CRC16 failed -> data block corrupt
+//------------------------------------------------------------------------------
+function CRC16_Check(data, start, length, initVal) {
+  // calculate ones complement of CRC16
+  var crc = ~CRC16_Calc(data, start, length, initVal);
+  if ((crc & 65535) == CRC16_GOOD_VALUE)
+    return true;
+  return false;
+}
