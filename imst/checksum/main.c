@@ -40,7 +40,15 @@ int main() {
   UINT8 msb = (result & 0xFF00) >> 8;
   UINT8 lsb = (result & 0xFF);
 
+  TxMessage.Payload[TxMessage.length++] = lsb;
+  TxMessage.Payload[TxMessage.length++] = msb;
+
   printf("msb: %i, lsb: %i \n", msb, lsb);
+
+  printf("checksum is correct (1=yes): %i\n",
+         CRC16_Check(&TxMessage.SapID,
+                     TxMessage.length + WIMODLR_HCI_MSG_HEADER_SIZE,
+                     CRC16_INIT_VALUE));
 
   return 0;
 }

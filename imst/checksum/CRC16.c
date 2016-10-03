@@ -134,7 +134,6 @@ CRC16_Calc(UINT8 *data, UINT16 length, UINT16 initVal) {
 bool CRC16_Check(UINT8 *data, UINT16 length, UINT16 initVal) {
   // calculate ones complement of CRC16
   UINT16 crc = ~CRC16_Calc(data, length, initVal);
-  printf("crc in check is:%x\n", crc);
   if (crc == CRC16_GOOD_VALUE) {
     return true;
   }
