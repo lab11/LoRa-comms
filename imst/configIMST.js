@@ -39,44 +39,93 @@ const DEVMGMT_STATUS_WRONG_PARAMETER = 0x03;
 const CRC16_INIT_VALUE = 0xFFFF;
 const CRC16_GOOD_VALUE = 0x0F47;
 const CRC16_POLYNOM = 0x8408;
+// RadioLink constants
+const RADIOLINK_MSG_SEND_U_DATA_REQ = 0x01;
+const RADIOLINK_MSG_SEND_U_DATA_RSP = 0x02;
+const RADIOLINK_MSG_U_DATA_RX_IND = 0x04;
+const RADIOLINK_MSG_U_DATA_TX_IND = 0x06;
+const RADIOLINK_MSG_SEND_C_DATA_REQ = 0x09;
+const RADIOLINK_MSG_SEND_C_DATA_RSP = 0x0A;
+const RADIOLINK_MSG_C_DATA_RX_IND = 0x0C;
+const RADIOLINK_MSG_C_DATA_TX_IND = 0x0E;
+
+// SET ENDPOINT ID HERE
+const ENDPOINT_ID = 0x01;
+
+// SET STATES HERE
+const INIT = 0x00;
+const WAIT_INIT_ACK = 0x01;
+const WAIT_CONFIG_ACK = 0x02;
+const WAIT_CMD = 0x03;
+var STATE = [ INIT, WAIT_INIT_ACK, WAIT_CONFIG_ACK, WAIT_CMD ];
+var currState = INIT;
 
 // require slip and serial port
 var slip = require('slip');
 var SerialPort = require('serialport');
 
 // start the slip decoder
-var logMsg = function(msg) { console.log('A SLIP message received: ' + msg); };
-var decoder = new slip.Decoder({onMessage : logMsg});
+var logMessage = function(msg) {};
+var decoder = new slip.Decoder({onMessage : logMessage});
 
 // open the serial port
 var port = new SerialPort('/dev/ttyUSB0',
                           {baudrate : 115200, parser : SerialPort.parsers.raw});
 
-// start listening on the serial port
-var currData;
-port.on('data', function(data) { currData = decoder.decode(data); });
+port.on('open', function() {
+  // make ping packet
+  var packet = makePacket(ENDPOINT_ID, DEVMGMT_MSG_PING_REQ, '');
+  port.write(packet);
+  currState = WAIT_INIT_ACK;
+});
+port.on('data', function(data) {
+  data = decoder.decode(data);
 
-// call configIMST
-configIMST(port, 1);
+  switch (currState) {
+  case WAIT_INIT_ACK:
+    if (data) {
+      if ((data[1] == DEVMGMT_MSG_PING_RSP) &&
+          CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
+        console.log('iM880B pinged!');
+        var packet = configIMST(ENDPOINT_ID);
+        port.write(packet);
+        currState = WAIT_CONFIG_ACK;
+      }
+    }
+    break;
+  case WAIT_CONFIG_ACK:
+    if (data) {
+      if ((data[1] == DEVMGMT_MSG_SET_RADIO_CONFIG_RSP) &&
+          CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
+        console.log('iM880B configured!');
+        currState = WAIT_CMD;
+      }
+    }
+    break;
+  case WAIT_CMD:
+    break;
+  default:
+    currState = WAIT_CMD;
+  }
+
+});
 
 // function to configIMST
-function configIMST(port, endpointID) {
-  // ping the IMST to make sure alive
-  makePacket(endpointID, DEVMGMT_MSG_PING_REQ, '', port);
-
-  // reset the IMST for fresh settings (takes 200 ms)
-//  makePacket(endpointID, DEVMGMT_MSG_PING_REQ, '', port);
-
-  // configure the ISMT
-  var config_msg = new Uint8Array(
-      [ 0, 16, 16, 1, 1, 0, 0, 192, 228, 0, 0, 1, 5, 0, 1, 1000, 15, 15 ]);
-  makePacket(endpointID, DEVMGMT_MSG_SET_RADIO_CONFIG_REQ, config_msg, port);
+function configIMST(endpointID) {
+  // configure the ISMT, settings stored in NVM
+  var config_msg = new Uint8Array([
+    0x01, 0,    0x10, 0x10, 0,    0x01, 0,    0x03, 0,
+    0xD5, 0xC8, 0xE4, 0,    0x04, 0x01, 0x05, 0,    0x01,
+    0x03, 0xE8, 0x0F, 0x0F, 0,    0,    0,    0
+  ]);
+  return makePacket(endpointID, DEVMGMT_MSG_SET_RADIO_CONFIG_REQ, config_msg,
+                    port);
 }
 
 // function to make lora packet and send
-function makePacket(endpointID, msgID, message, port) {
+function makePacket(endpointID, msgID, message) {
   // declare the packet
-  const packet = new Uint8Array(message.length + 7);
+  const packet = new Uint8Array(message.length + 6);
   packet[0] = 0xC0;
   packet[1] = endpointID;
   packet[2] = msgID;
@@ -86,17 +135,18 @@ function makePacket(endpointID, msgID, message, port) {
   }
   var result = CRC16_Calc(packet, 1, 2 + message.length, CRC16_INIT_VALUE);
   packet[3 + message.length] = result & 0xFF;
-  packet[3 + message.length + 1] = (result >> 8);
+  packet[4 + message.length] = (result >> 8);
   var check = CRC16_Check(packet, 1, 4 + message.length, CRC16_INIT_VALUE);
 
   // check that checksum correct before adding final C0
   if (check) {
-    packet[3 + message.length + 2] = 0xC0;
+    packet[5 + message.length] = 0xC0;
     packet = slip.encode(packet);
-    port.on('open', function() { port.write(packet); });
+    return packet;
   } else {
     console.log('Checksum check failed! Your message: ' + message +
                 'will not be delivered');
+    return 0;
   }
 }
 
