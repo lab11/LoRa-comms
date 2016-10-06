@@ -1,7 +1,8 @@
-// Samuel Rohrer
-// 9/28/16
-// configIMST.js
-//  - configure the IMST with the parameters from configParams.imst
+#!/usr/bin / env mode
+/*
+ *
+ * configure iM880B
+ */
 
 // Lora Constants
 const DEVMGMT_ID = 0x01;
@@ -49,80 +50,81 @@ const RADIOLINK_MSG_SEND_C_DATA_RSP = 0x0A;
 const RADIOLINK_MSG_C_DATA_RX_IND = 0x0C;
 const RADIOLINK_MSG_C_DATA_TX_IND = 0x0E;
 
-// SET ENDPOINT ID HERE
-const ENDPOINT_ID = 0x01;
-
 // SET STATES HERE
 const INIT = 0x00;
 const WAIT_INIT_ACK = 0x01;
 const WAIT_CONFIG_ACK = 0x02;
 const WAIT_CMD = 0x03;
 var STATE = [ INIT, WAIT_INIT_ACK, WAIT_CONFIG_ACK, WAIT_CMD ];
-var currState = INIT;
-
-// require slip and serial port
+// require events and slip and serial port
 var slip = require('slip');
 var SerialPort = require('serialport');
+var events = require('events');
+var util = require('util');
 
-// start the slip decoder
-var decoder = new slip.Decoder({});
+var iM880 = function() {
+  this.port = new SerialPort(
+      '/dev/ttyUSB0', {baudrate : 115200, parser : SerialPort.parsers.raw});
+  this.decoder = new slip.Decoder({});
+  this.currState = INIT;
+};
 
-// open the serial port
-var port = new SerialPort('/dev/ttyUSB0',
-                          {baudrate : 115200, parser : SerialPort.parsers.raw});
+util.inherits(iM880, events.EventEmitter);
 
-port.on('open', function() {
-  // make ping packet
-  var packet = makePacket(ENDPOINT_ID, DEVMGMT_MSG_PING_REQ, '');
-  port.write(packet);
-  currState = WAIT_INIT_ACK;
-});
-port.on('data', function(data) {
-  data = decoder.decode(data);
+// configure method
+iM880.prototype.configure = function(endpointID) {
+  var that = this;
+  this.port.on('open', function() {
+    // make ping packet
+    var packet = that.makePacket(endpointID, DEVMGMT_MSG_PING_REQ, '');
+    that.port.write(packet);
+    that.currState = WAIT_INIT_ACK;
+  });
+  this.port.on('data', function(data) {
+    data = that.decoder.decode(data);
 
-  switch (currState) {
-  case WAIT_INIT_ACK:
-    if (data) {
-      if ((data[1] == DEVMGMT_MSG_PING_RSP) &&
-          CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
-        console.log('iM880B pinged!');
-        var packet = configIMST(ENDPOINT_ID);
-        port.write(packet);
-        currState = WAIT_CONFIG_ACK;
+    switch (that.currState) {
+    case WAIT_INIT_ACK:
+      if (data) {
+        if ((data[1] == DEVMGMT_MSG_PING_RSP) &&
+            that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
+          console.log('iM880B pinged!');
+          var config_msg = new Uint8Array([
+            0x01, 0,    0x10, 0x10, 0,    0x01, 0,    0x03, 0,
+            0xD5, 0xC8, 0xE4, 0,    0x04, 0x01, 0x05, 0,    0x01,
+            0x03, 0xE8, 0x0F, 0x0F, 0,    0,    0,    0
+          ]);
+          var packet = that.makePacket(
+              endpointID, DEVMGMT_MSG_SET_RADIO_CONFIG_REQ, config_msg);
+
+          that.port.write(packet);
+          that.currState = WAIT_CONFIG_ACK;
+        }
       }
-    }
-    break;
-  case WAIT_CONFIG_ACK:
-    if (data) {
-      if ((data[1] == DEVMGMT_MSG_SET_RADIO_CONFIG_RSP) &&
-          CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
-        console.log('iM880B configured!');
-        currState = WAIT_CMD;
+      break;
+    case WAIT_CONFIG_ACK:
+      if (data) {
+        if ((data[1] == DEVMGMT_MSG_SET_RADIO_CONFIG_RSP) &&
+            that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
+          console.log('iM880B configured!');
+          that.currState = WAIT_CMD;
+        }
       }
+      break;
+    case WAIT_CMD:
+      break;
+    default:
+      currState = WAIT_CMD;
     }
-    break;
-  case WAIT_CMD:
-    break;
-  default:
-    currState = WAIT_CMD;
-  }
 
-});
+  });
+};
 
-// function to configIMST
-function configIMST(endpointID) {
-  // configure the ISMT, settings stored in NVM
-  var config_msg = new Uint8Array([
-    0x01, 0,    0x10, 0x10, 0,    0x01, 0,    0x03, 0,
-    0xD5, 0xC8, 0xE4, 0,    0x04, 0x01, 0x05, 0,    0x01,
-    0x03, 0xE8, 0x0F, 0x0F, 0,    0,    0,    0
-  ]);
-  return makePacket(endpointID, DEVMGMT_MSG_SET_RADIO_CONFIG_REQ, config_msg,
-                    port);
-}
+// send method
+iM880.prototype.send = function() { console.log('send a message!'); };
 
 // function to make lora packet and send
-function makePacket(endpointID, msgID, message) {
+iM880.prototype.makePacket = function(endpointID, msgID, message) {
   // declare the packet
   const packet = new Uint8Array(message.length + 6);
   packet[0] = 0xC0;
@@ -132,10 +134,10 @@ function makePacket(endpointID, msgID, message) {
   for (var i = 0; i < message.length; i++) {
     packet[3 + i] = message[i];
   }
-  var result = CRC16_Calc(packet, 1, 2 + message.length, CRC16_INIT_VALUE);
+  var result = this.CRC16_Calc(packet, 1, 2 + message.length, CRC16_INIT_VALUE);
   packet[3 + message.length] = result & 0xFF;
   packet[4 + message.length] = (result >> 8);
-  var check = CRC16_Check(packet, 1, 4 + message.length, CRC16_INIT_VALUE);
+  var check = this.CRC16_Check(packet, 1, 4 + message.length, CRC16_INIT_VALUE);
 
   // check that checksum correct before adding final C0
   if (check) {
@@ -147,11 +149,11 @@ function makePacket(endpointID, msgID, message) {
                 'will not be delivered');
     return 0;
   }
-}
+};
 
 // --------------- CRC FUNCTIONS ------------------------------>
 // CRC calculation
-function CRC16_Calc(data, start, length, initVal) {
+iM880.prototype.CRC16_Calc = function(data, start, length, initVal) {
   // init crc
   var crc = initVal;
   // iterate over all bytes
@@ -169,7 +171,7 @@ function CRC16_Calc(data, start, length, initVal) {
     }
   }
   return (~crc & 65535);
-}
+};
 
 //------------------------------------------------------------------------------
 
@@ -191,10 +193,12 @@ function CRC16_Calc(data, start, length, initVal) {
 //! @retVal true CRC16 ok -> data block ok
 //! @retVal false CRC16 failed -> data block corrupt
 //------------------------------------------------------------------------------
-function CRC16_Check(data, start, length, initVal) {
+iM880.prototype.CRC16_Check = function(data, start, length, initVal) {
   // calculate ones complement of CRC16
-  var crc = CRC16_Calc(data, start, length, initVal);
+  var crc = this.CRC16_Calc(data, start, length, initVal);
   if (crc == CRC16_GOOD_VALUE)
     return true;
   return false;
-}
+};
+
+module.exports = new iM880();
