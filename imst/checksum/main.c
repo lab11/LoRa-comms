@@ -24,7 +24,7 @@ TWiMODLR_HCIMessage TxMessage;
 
 int main() {
 
-  TxMessage.SapID = 1;
+  TxMessage.SapID = 4;
   TxMessage.MsgID = 1;
   TxMessage.length = 0;
 

@@ -49,54 +49,85 @@ const RADIOLINK_MSG_SEND_C_DATA_REQ = 0x09;
 const RADIOLINK_MSG_SEND_C_DATA_RSP = 0x0A;
 const RADIOLINK_MSG_C_DATA_RX_IND = 0x0C;
 const RADIOLINK_MSG_C_DATA_TX_IND = 0x0E;
+const RADIOLINK_MSG_ACK_RX_IND = 0x10;
+const RADIOLINK_MSG_ACK_TIMEOUT_IND = 0x12;
+const RADIOLINK_MSG_ACK_TX_IND = 0x14;
+const RADIOLINK_ID = 0x03;
 
 // SET STATES HERE
 const INIT = 0x00;
 const WAIT_INIT_ACK = 0x01;
 const WAIT_CONFIG_ACK = 0x02;
 const WAIT_CMD = 0x03;
-var STATE = [ INIT, WAIT_INIT_ACK, WAIT_CONFIG_ACK, WAIT_CMD ];
+const WAIT_TRANSMIT = 0x04;
+const WAIT_RX_ACK = 0x05;
+
 // require events and slip and serial port
 var slip = require('slip');
 var SerialPort = require('serialport');
 var events = require('events');
 var util = require('util');
 
-var iM880 = function() {
+var STATE = new Uint8Array([
+  INIT, WAIT_INIT_ACK, WAIT_CONFIG_ACK, WAIT_CMD, WAIT_TRANSMIT, WAIT_RX_ACK
+]);
+var iM880 = function(deviceID, deviceGroup) {
   this.port = new SerialPort(
       '/dev/ttyUSB0', {baudrate : 115200, parser : SerialPort.parsers.raw});
   this.decoder = new slip.Decoder({});
   this.currState = INIT;
-};
-
-util.inherits(iM880, events.EventEmitter);
-
-// configure method
-iM880.prototype.configure = function(endpointID) {
   var that = this;
   this.port.on('open', function() {
     // make ping packet
-    var packet = that.makePacket(endpointID, DEVMGMT_MSG_PING_REQ, '');
+    var packet = that.makePacket(DEVMGMT_ID, DEVMGMT_MSG_PING_REQ, '');
     that.port.write(packet);
     that.currState = WAIT_INIT_ACK;
   });
   this.port.on('data', function(data) {
     data = that.decoder.decode(data);
+    if (data) {
+      if ((data[1] == RADIOLINK_MSG_C_DATA_RX_IND) &&
+          that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
+        that.emit('rx-msg', data.slice(2, data.length - 2));
+      }
+    }
 
     switch (that.currState) {
     case WAIT_INIT_ACK:
       if (data) {
         if ((data[1] == DEVMGMT_MSG_PING_RSP) &&
             that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
-          console.log('iM880B pinged!');
+          // console.log('iM880B pinged!');
           var config_msg = new Uint8Array([
-            0x01, 0,    0x10, 0x10, 0,    0x01, 0,    0x03, 0,
-            0xD5, 0xC8, 0xE4, 0,    0x04, 0x01, 0x05, 0,    0x01,
-            0x03, 0xE8, 0x0F, 0x0F, 0,    0,    0,    0
+            0x01,
+            0x0,
+            deviceGroup,
+            0x10,
+            (deviceID & 0xFF00),
+            (deviceID & 0xFF),
+            0,
+            0x03,
+            0,
+            0xD5,
+            0xC8,
+            0xE4,
+            0,
+            0x04,
+            0x01,
+            0x05,
+            0,
+            0x01,
+            0x03,
+            0xE8,
+            0x0F,
+            0x0F,
+            0,
+            0,
+            0,
+            0
           ]);
           var packet = that.makePacket(
-              endpointID, DEVMGMT_MSG_SET_RADIO_CONFIG_REQ, config_msg);
-
+              DEVMGMT_ID, DEVMGMT_MSG_SET_RADIO_CONFIG_REQ, config_msg);
           that.port.write(packet);
           that.currState = WAIT_CONFIG_ACK;
         }
@@ -106,22 +137,60 @@ iM880.prototype.configure = function(endpointID) {
       if (data) {
         if ((data[1] == DEVMGMT_MSG_SET_RADIO_CONFIG_RSP) &&
             that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
-          console.log('iM880B configured!');
+          // console.log('iM880B configured!');
           that.currState = WAIT_CMD;
+          that.emit('config-done', data[2]);
         }
       }
       break;
     case WAIT_CMD:
+      if (data) {
+        if (data[1] == RADIOLINK_MSG_SEND_C_DATA_RSP &&
+            that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
+          that.currState = WAIT_TRANSMIT;
+        }
+      }
       break;
-    default:
-      currState = WAIT_CMD;
+    case WAIT_TRANSMIT:
+      if (data) {
+        if (data[1] == RADIOLINK_MSG_C_DATA_TX_IND &&
+            that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
+          that.currState = WAIT_RX_ACK;
+          txdata = data.slice(2, data.length - 2);
+        }
+      }
+      break;
+    case WAIT_RX_ACK:
+      if (data) {
+        if (data[1] == RADIOLINK_MSG_ACK_RX_IND &&
+            that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
+          that.currState = WAIT_CMD;
+          that.emit('tx-msg-done', txdata);
+        } else if (data[1] == RADIOLINK_MSG_ACK_TIMEOUT_IND &&
+                   that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
+          that.currState = WAIT_CMD;
+          txdata = 'ACK timeout, transmission still sent';
+          that.emit('tx-msg-done', txdata);
+        }
+      }
+      break;
+      default:
+         that.currState = INIT;
     }
-
   });
 };
 
+util.inherits(iM880, events.EventEmitter);
+
 // send method
-iM880.prototype.send = function() { console.log('send a message!'); };
+iM880.prototype.send = function(destGroup, destDevice, msg) {
+  // make the packet and add destination addresses to msg
+  var packet =
+      this.makePacket(RADIOLINK_ID, RADIOLINK_MSG_SEND_C_DATA_REQ, msg);
+  // send the packet
+  this.port.write(packet);
+  this.currState = WAIT_CMD;
+};
 
 // function to make lora packet and send
 iM880.prototype.makePacket = function(endpointID, msgID, message) {
@@ -201,4 +270,4 @@ iM880.prototype.CRC16_Check = function(data, start, length, initVal) {
   return false;
 };
 
-module.exports = new iM880();
+module.exports = iM880;
