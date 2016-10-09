@@ -85,13 +85,31 @@ var iM880 = function(deviceID, deviceGroup) {
   });
   this.port.on('data', function(data) {
     data = that.decoder.decode(data);
+
+    // check for received messages always
     if (data) {
       if ((data[1] == RADIOLINK_MSG_C_DATA_RX_IND) &&
           that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
-        that.emit('rx-msg', data.slice(2, data.length - 2));
+        // if data[0], 0th bit ==0 then non extended form
+        if (!(data[2] & 1)) {
+            var rxmsgdata = {
+                radioCtrlField  : data[3],
+                destGroupAddr   : data[4],
+                destDeviceAddr  : ((data[5] << 8) + data[6]),
+                srcGroupAddr    : data[7],
+                srcDeviceAddr   : ((data[8] << 8) + data[9]),
+                payload           : data.slice(11, data.length-2),
+                receivedTime      : now
+            };
+            that.emit('rx-msg', rxmsgdata);
+        } else {
+          // extended mode with more information, return entire msg instead
+            that.emit('rx-msg', data.slice(2, data.length - 2));
+        }
       }
     }
 
+    // state machine to control configuration and transmission
     switch (that.currState) {
     case WAIT_INIT_ACK:
       if (data) {
@@ -99,33 +117,9 @@ var iM880 = function(deviceID, deviceGroup) {
             that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
           // console.log('iM880B pinged!');
           var config_msg = new Uint8Array([
-            0x01,
-            0x0,
-            deviceGroup,
-            0x10,
-            (deviceID & 0xFF00),
-            (deviceID & 0xFF),
-            0,
-            0x03,
-            0,
-            0xD5,
-            0xC8,
-            0xE4,
-            0,
-            0x04,
-            0x01,
-            0x05,
-            0,
-            0x01,
-            0x03,
-            0xE8,
-            0x0F,
-            0x0F,
-            0,
-            0,
-            0,
-            0
-          ]);
+            0x01, 0x0, deviceGroup, 0x10, (deviceID & 0xFF00), 
+            (deviceID & 0xFF), 0, 0x03, 0, 0xD5, 0xC8, 0xE4, 0, 0x04, 0x01,
+            0x05, 0, 0x01, 0x03, 0xE8, 0x0F, 0x0F, 0, 0, 0, 0 ]);
           var packet = that.makePacket(
               DEVMGMT_ID, DEVMGMT_MSG_SET_RADIO_CONFIG_REQ, config_msg);
           that.port.write(packet);
@@ -137,9 +131,9 @@ var iM880 = function(deviceID, deviceGroup) {
       if (data) {
         if ((data[1] == DEVMGMT_MSG_SET_RADIO_CONFIG_RSP) &&
             that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
-          // console.log('iM880B configured!');
           that.currState = WAIT_CMD;
-          that.emit('config-done', data[2]);
+          var msg = that.interpretStatusByte('config', data[2]);
+          that.emit('config-done', msg);
         }
       }
       break;
@@ -156,7 +150,7 @@ var iM880 = function(deviceID, deviceGroup) {
         if (data[1] == RADIOLINK_MSG_C_DATA_TX_IND &&
             that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
           that.currState = WAIT_RX_ACK;
-          txdata = data.slice(2, data.length - 2);
+          txdata = that.interpretStatusByte('radio', data[2]);
         }
       }
       break;
@@ -174,8 +168,8 @@ var iM880 = function(deviceID, deviceGroup) {
         }
       }
       break;
-      default:
-         that.currState = INIT;
+    default:
+      that.currState = INIT;
     }
   });
 };
@@ -185,8 +179,15 @@ util.inherits(iM880, events.EventEmitter);
 // send method
 iM880.prototype.send = function(destGroup, destDevice, msg) {
   // make the packet and add destination addresses to msg
+  const newmsg = new Uint8Array(msg.length + 3);
+  newmsg[0] = destGroup;
+  newmsg[1] = (destDevice & 0xFF00);
+  newmsg[2] = (destDevice & 0xFF);
+  for (var i = 0; i < msg.length; i++) {
+    newmsg[3 + i] = msg[i];
+  }
   var packet =
-      this.makePacket(RADIOLINK_ID, RADIOLINK_MSG_SEND_C_DATA_REQ, msg);
+      this.makePacket(RADIOLINK_ID, RADIOLINK_MSG_SEND_C_DATA_REQ, newmsg);
   // send the packet
   this.port.write(packet);
   this.currState = WAIT_CMD;
@@ -218,6 +219,41 @@ iM880.prototype.makePacket = function(endpointID, msgID, message) {
                 'will not be delivered');
     return 0;
   }
+};
+
+// interpret status byte
+iM880.prototype.interpretStatusByte = function(type, val) {
+  var msg = 0;
+  if (type == 'config') {
+    if (val == 0x00) {
+      msg = 'successful!';
+    } else if (val == 0x01) {
+      msg = 'operation failed';
+    } else if (val == 0x02) {
+      msg = 'command not supported (check system operation mode)';
+    } else if (val == 0x03) {
+      msg = 'HCI message contains wrong parameter';
+    }
+  } else if (type == 'radio') {
+    if (val == 0x00) {
+      msg = 'successful!';
+    } else if (val == 0x01) {
+      msg = 'failed';
+    } else if (val == 0x02) {
+      msg = 'command not supported (check system operation mode)';
+    } else if (val == 0x03) {
+      msg = 'HCI message contains wrong parameter';
+    } else if (val == 0x04) {
+      msg = 'module operates in wrong radio mode';
+    } else if (val == 0x05) {
+      msg = 'transmission not possible due to LBT result "media busy"';
+    } else if (val == 0x07) {
+      msg = 'no buffer for radio transmission available';
+    } else if (val == 0x08) {
+      msg = 'radio packet length invalid';
+    }
+  }
+  return msg;
 };
 
 // --------------- CRC FUNCTIONS ------------------------------>

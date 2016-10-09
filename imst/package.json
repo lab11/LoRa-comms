@@ -1,11 +1,11 @@
 {
-  "name": "im880b-serial-comm",
+  "name": "iM880-serial-comm",
   "version": "1.0.0",
-  "description": "serial communication with iM880B",
+  "description": "serial communication with iM880",
   "main": "index.js",
   "repository": {
     "type": "git",
-    "url": "git://github.com/lab11/LoraDev.git"
+    "url": "git://github.com/lab11/LoRa-comms.git"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
