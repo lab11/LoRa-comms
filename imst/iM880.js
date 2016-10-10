@@ -68,9 +68,6 @@ var SerialPort = require('serialport');
 var events = require('events');
 var util = require('util');
 
-var STATE = new Uint8Array([
-  INIT, WAIT_INIT_ACK, WAIT_CONFIG_ACK, WAIT_CMD, WAIT_TRANSMIT, WAIT_RX_ACK
-]);
 var iM880 = function(deviceID, deviceGroup) {
   this.port = new SerialPort(
       '/dev/ttyUSB0', {baudrate : 115200, parser : SerialPort.parsers.raw});
@@ -91,20 +88,28 @@ var iM880 = function(deviceID, deviceGroup) {
       if ((data[1] == RADIOLINK_MSG_C_DATA_RX_IND) &&
           that.CRC16_Check(data, 0, data.length, CRC16_INIT_VALUE)) {
         // if data[0], 0th bit ==0 then non extended form
+        var now = new Date().toISOString();
         if (!(data[2] & 1)) {
             var rxmsgdata = {
-                radioCtrlField  : data[3],
-                destGroupAddr   : data[4],
-                destDeviceAddr  : ((data[5] << 8) + data[6]),
-                srcGroupAddr    : data[7],
-                srcDeviceAddr   : ((data[8] << 8) + data[9]),
-                payload           : data.slice(11, data.length-2),
+                destGroupAddr   : data[3],
+                destDeviceAddr  : ((data[4] << 8) + data[5]),
+                srcGroupAddr    : data[6],
+                srcDeviceAddr   : ((data[7] << 8) + data[8]),
+                payload           : data.slice(9, data.length-2),
                 receivedTime      : now
             };
             that.emit('rx-msg', rxmsgdata);
         } else {
           // extended mode with more information, return entire msg instead
-            that.emit('rx-msg', data.slice(2, data.length - 2));
+            var rxmsgdata = {
+                destGroupAddr   : data[3],
+                destDeviceAddr  : ((data[4] << 8) + data[5]),
+                srcGroupAddr    : data[6],
+                srcDeviceAddr   : ((data[7] << 8) + data[8]),
+                payload           : data.slice(9, data.length-9),
+                receivedTime      : now
+            };
+            that.emit('rx-msg', rxmsgdata);
         }
       }
     }

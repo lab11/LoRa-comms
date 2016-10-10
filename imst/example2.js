@@ -3,18 +3,18 @@
 var iM880 = require('./iM880');
 
 // set the endpoint ID
-DEVICE_ID = 0x04;
+DEVICE_ID = 0x09;
 DEVICE_GROUP = 0x10;
 
 // call the construction with and endpointID
 device = new iM880(DEVICE_ID, DEVICE_GROUP);
 // wait for config-done message and print endpointID
-var msg = new Uint8Array([ 9, 8, 10, 67, 89, 100, 43]);
+var msg = new Uint8Array([ 9, 8, 10, 67 ]);
 device.on('config-done', function(statusmsg) {
   // print the ID of the endpoint
   console.log('Configuration status: ' + statusmsg);
   // send a message
-  device.send(0x10, 0x0009, msg);
+  //device.send(0x10, 0x0009, msg);
 });
 
 // listen for new messages and print them
@@ -27,11 +27,5 @@ device.on('rx-msg', function(data) {
   console.log('    srcDeviceAddr: ' + data.srcDeviceAddr);
   console.log('          payload: ' + data.payload);
   console.log('     receivedTime: ' + data.receivedTime);
-;
 });
 
-// listen for transmit done events
-device.on('tx-msg-done', function(statusmsg) {
-    // print out tx msg
-    console.log('Tx-status: ' + statusmsg);
-});
