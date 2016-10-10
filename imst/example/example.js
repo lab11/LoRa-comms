@@ -1,20 +1,20 @@
 #!/usr/bin / env node
 
-var iM880 = require('./iM880');
+var iM880 = require('../iM880');
 
 // set the endpoint ID
-DEVICE_ID = 0x04;
+DEVICE_ID = 0x07;
 DEVICE_GROUP = 0x10;
 
 // call the construction with and endpointID
-device = new iM880(DEVICE_ID, DEVICE_GROUP);
+device = new iM880(DEVICE_ID, DEVICE_GROUP );
 // wait for config-done message and print endpointID
 var msg = new Uint8Array([ 9, 8, 10, 67, 89, 100, 43 ]);
 device.on('config-done', function(statusmsg) {
   // print the ID of the endpoint
   console.log('Configuration status: ' + statusmsg);
   // send a message
-  device.send(0x10, 0x0009, msg);
+  device.send(0x0009, 0x10, msg);
 });
 
 // listen for new messages and print them

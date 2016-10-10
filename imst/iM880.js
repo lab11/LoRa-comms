@@ -68,9 +68,12 @@ var SerialPort = require('serialport');
 var events = require('events');
 var util = require('util');
 
-var iM880 = function(deviceID, deviceGroup) {
+var iM880 = function(deviceID, deviceGroup, serport) {
+  if( serport == null) {
+    serport = '/dev/ttyUSB0';
+  }
   this.port = new SerialPort(
-      '/dev/ttyUSB0', {baudrate : 115200, parser : SerialPort.parsers.raw});
+      serport, {baudrate : 115200, parser : SerialPort.parsers.raw});
   this.decoder = new slip.Decoder({});
   this.currState = INIT;
   var that = this;
@@ -188,6 +191,7 @@ iM880.prototype.send = function(destDevice, destGroup, msg) {
   newmsg[0] = destGroup;
   newmsg[1] = (destDevice & 0xFF00);
   newmsg[2] = (destDevice & 0xFF);
+
   for (var i = 0; i < msg.length; i++) {
     newmsg[3 + i] = msg[i];
   }
@@ -201,22 +205,20 @@ iM880.prototype.send = function(destDevice, destGroup, msg) {
 // function to make lora packet and send
 iM880.prototype.makePacket = function(endpointID, msgID, message) {
   // declare the packet
-  const packet = new Uint8Array(message.length + 6);
-  packet[0] = 0xC0;
-  packet[1] = endpointID;
-  packet[2] = msgID;
+  packet = new Uint8Array(message.length + 4);
+  packet[0] = endpointID;
+  packet[1] = msgID;
 
   for (var i = 0; i < message.length; i++) {
-    packet[3 + i] = message[i];
+    packet[2 + i] = message[i];
   }
-  var result = this.CRC16_Calc(packet, 1, 2 + message.length, CRC16_INIT_VALUE);
-  packet[3 + message.length] = result & 0xFF;
-  packet[4 + message.length] = (result >> 8);
-  var check = this.CRC16_Check(packet, 1, 4 + message.length, CRC16_INIT_VALUE);
-
+  var result = this.CRC16_Calc(packet, 0, 2 + message.length, CRC16_INIT_VALUE);
+  packet[2 + message.length] = result & 0xFF;
+  packet[3 + message.length] = (result >> 8);
+  var check = this.CRC16_Check(packet, 0, 4 + message.length, CRC16_INIT_VALUE);
+    
   // check that checksum correct before adding final C0
   if (check) {
-    packet[5 + message.length] = 0xC0;
     packet = slip.encode(packet);
     return packet;
   } else {
