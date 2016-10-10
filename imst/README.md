@@ -4,6 +4,8 @@ iM880 Serial Communications
 
 This script allows the iM880 to be configured, receive confirmed messages, and 
     send confirmed messages all over a serial port.
+- The file `configuration.info` are the selected configuration parameters based
+    on our use case.
 
 Usage
 --------
