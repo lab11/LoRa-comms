@@ -2,7 +2,7 @@
   "name": "iM880-serial-comm",
   "version": "1.0.0",
   "description": "serial communication with iM880",
-  "main": "index.js",
+  "main": "iM880.js",
   "repository": {
     "type": "git",
     "url": "git://github.com/lab11/LoRa-comms.git"

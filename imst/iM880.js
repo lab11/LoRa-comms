@@ -182,7 +182,7 @@ var iM880 = function(deviceID, deviceGroup) {
 util.inherits(iM880, events.EventEmitter);
 
 // send method
-iM880.prototype.send = function(destGroup, destDevice, msg) {
+iM880.prototype.send = function(destDevice, destGroup, msg) {
   // make the packet and add destination addresses to msg
   const newmsg = new Uint8Array(msg.length + 3);
   newmsg[0] = destGroup;

@@ -21,11 +21,6 @@ device.on('config-done', function(statusmsg) {
 device.on('rx-msg', function(data) {
   // print rx message without slip encoding or checksum
   console.log('Received message!!');
-  console.log('    destGroupAddr: ' + data.destGroupAddr);
-  console.log('   destDeviceAddr: ' + data.destDeviceAddr);
-  console.log('     srcGroupAddr: ' + data.srcGroupAddr);
-  console.log('    srcDeviceAddr: ' + data.srcDeviceAddr);
-  console.log('          payload: ' + data.payload);
-  console.log('     receivedTime: ' + data.receivedTime);
-});
+  console.log(data);
+  });
 
