@@ -6,6 +6,7 @@ This script allows the iM880 to be configured, receive confirmed messages, and
     send confirmed messages all over a serial port.
 - The file `configuration.info` are the selected configuration parameters based
     on our use case.
+- Based on the [iM880](http://www.wireless-solutions.de/products/radiomodules/im880b-l.html).
 
 Usage
 --------
@@ -67,3 +68,29 @@ Example `rx-msg` Packet
 - `payload`: Message being sent.
 - `receivedTime`: Timestamp message was received at.
 
+
+Running examples
+-------------------
+- Notice the files `example/tx-example.js` and `example/rx-example.js`, they can
+   be used to quickly test your LoRa system:
+
+1. Run `node rx-example.js` to open an iM880 waiting to receive messages.
+2. Run `node tx-example.js` in another terminal to open an iM880 that will 
+        transmit messages.
+3. After running both your output should be:
+    * for `rx-example.js`: 
+   
+   ```
+    Configuration status: successful!
+    Received message!!
+    {
+        //your received message
+    }
+    ```
+   
+   * for `tx-example.js`:
+   
+   ```
+    Configuration status: successful!
+    Tx-status: successful!
+    ```

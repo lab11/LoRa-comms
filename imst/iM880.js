@@ -104,14 +104,20 @@ var iM880 = function(deviceID, deviceGroup, serport) {
             that.emit('rx-msg', rxmsgdata);
         } else {
           // extended mode with more information, return entire msg instead
+            console.log('msg is ' + data);
             var rxmsgdata = {
                 destGroupAddr   : data[3],
                 destDeviceAddr  : ((data[4] << 8) + data[5]),
                 srcGroupAddr    : data[6],
                 srcDeviceAddr   : ((data[7] << 8) + data[8]),
-                payload           : data.slice(9, data.length-9),
-                receivedTime      : now
+                payload         : data.slice(9, data.length-9),
+                rssi            : ((data[data.length-9] << 8) + data[data.length-8]),
+                snr             : data[data.length-7],
+                receivedTime    : now
             };
+            console.log('data-9 ' + data[data.length-9]);
+            console.log('data-8 ' + data[data.length-8]);
+
             that.emit('rx-msg', rxmsgdata);
         }
       }
