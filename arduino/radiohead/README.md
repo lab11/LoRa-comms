@@ -1,0 +1,1 @@
+* to configure system to have multiple clients simply program another LoRa antenna with a different `CLIENT_ADDRESS` than the original, and then messages should appear in the serial console from both clients
